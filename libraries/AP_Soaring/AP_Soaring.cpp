@@ -299,6 +299,7 @@ void SoaringController::update_thermalling()
 
         _prev_update_location = current_loc;      // save for next time
         _prev_update_time = AP_HAL::micros64();
+		 gcs().send_text(MAV_SEVERITY_INFO, "Starting to thermal. _prev_update_time %d", (int)_prev_update_time);
         _vario.new_data = false;
     }
 }

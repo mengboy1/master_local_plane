@@ -3,14 +3,6 @@
 #include <GCS_MAVLink/GCS.h>
 #include <AP_Logger/AP_logger.h>
 #include <math.h>
-#include <APM_Control/APM_Control.h>
-#include "POMDSoarAlgorithm.h"
-
-
-
-
-int32_t num=1;
-int32_t  maxradius=1;
 
 
 
@@ -50,7 +42,7 @@ const AP_Param::GroupInfo AP_L1_Control::var_info[] = {
     // @Range: 0 89
     // @User: Advanced
     AP_GROUPINFO_FRAME("LIM_BANK",   3, AP_L1_Control, _loiter_bank_limit, 0.0f, AP_PARAM_FRAME_PLANE),
-    
+
     AP_GROUPEND
 };
 
@@ -224,6 +216,9 @@ void AP_L1_Control::update_waypoint(const struct Location &prev_WP, const struct
     }
     _last_update_waypoint_us = now;
 
+    // Calculate L1 gain required for specified damping
+    float K_L1 = 4.0f * _L1_damping * _L1_damping;
+
     // Get current position and velocity
     if (_ahrs.get_position(_current_loc) == false) {
         // if no GPS loc available, maintain last nav/target_bearing
@@ -269,41 +264,13 @@ void AP_L1_Control::update_waypoint(const struct Location &prev_WP, const struct
 
     // calculate distance to target track, for reporting
     _crosstrack_error = A_air % AB;
-	gcs().send_text(MAV_SEVERITY_INFO, "_crosstrack_error %f",double(_crosstrack_error));
-	//gcs().send_text(MAV_SEVERITY_INFO, "Tuning: cerr %.2f",(float)_crosstrack_error);
+	gcs().send_text(MAV_SEVERITY_INFO, "Tuning: cerr %.2f",(float)_crosstrack_error);
 
     //Determine if the aircraft is behind a +-135 degree degree arc centred on WP A
     //and further than L1 distance from WP A. Then use WP A as the L1 reference point
     //Otherwise do normal L1 guidance
     float WP_A_dist = A_air.length();
     float alongTrackDist = A_air * AB;
-	
-    //pomodp
-	Pab = AB_length/2e+03;
-	Perr = (_crosstrack_error-(-80.0))/(50.0-(-80.0));;
-	Proll = _ahrs.cos_roll();
-	Pv = groundSpeed/30.0;
-	Pwa = WP_A_dist/2e+03;
-	_pomdsoar.init_thermalling();//更新初始状态
-	_pomdsoar._thermal_start_time_us = AP_HAL::micros64();
-	//int _thermal_start_time_us = AP_HAL::micros64();
-	// gcs().send_text(MAV_SEVERITY_INFO, "time %d",int(_thermal_start_time_us));
-	_ahrs.get_position(_current_loc);
-	bool is_ok_to_stop = _pomdsoar.update_thermalling(_current_loc);
-	_pomdsoar.update_internal_state();
-	_pomdsoar.update_internal_state_test();
-
-	float nav_roll = _pomdsoar.get_action();
-	//gcs().send_text(MAV_SEVERITY_INFO, "nav_roll_cd %f",double(nav_roll));
-	if(is_ok_to_stop)
-		{
-	       gcs().send_text(MAV_SEVERITY_INFO, "nav_roll_cd %f",double(nav_roll));
-		}
-    // Calculate L1 gain required for specified damping
-    float K_L1 = 4.0f * _L1_damping * _L1_damping;
-
-
-	
     if (WP_A_dist > _L1_dist && alongTrackDist/MAX(WP_A_dist, 1.0f) < -0.7071f)
     {
         //Calc Nu to fly To WP A
@@ -484,10 +451,6 @@ void AP_L1_Control::update_loiter(const struct Location &center_WP, float radius
 void AP_L1_Control::update_loiter_ellipse(const struct Location &center_loc, const int32_t maxradius_cm, const float minmaxratio, const float psi, const int8_t orientation, struct Location &aircraft_loc, Vector3f &aircraft_vel, struct Location &desired_loc)
 {
     struct Location _current_loc;
-	//int32_t  maxradius;
-	//int32_t  g;
-	//int32_t fla1=0;
-	//int32_t fla2=0;
 
     // scale loiter radius with square of EAS2TAS to allow us to stay
     // stable at high altitude
@@ -519,40 +482,6 @@ void AP_L1_Control::update_loiter_ellipse(const struct Location &center_loc, con
 
     // update _target_bearing_cd
     _target_bearing_cd = _current_loc.get_bearing_to(center_loc);
-	gcs().send_text(MAV_SEVERITY_INFO, "Tuning: bearing %d",(int)_target_bearing_cd);
-	
-	   //每半圈改变无人机的半径 
-	   /*maxradius= maxradius_cm;
-	if ((_target_bearing_cd >= 18000 && _target_bearing_cd < 18100)||(_target_bearing_cd < 36000 && _target_bearing_cd > 35900))
-		{
-	    
-		if ((_target_bearing_cd-18000)<40 || abs(_target_bearing_cd-36000)<40)
-			{
-		   		num=num+1;//n代表n个半圈
-		   		gcs().send_text(MAV_SEVERITY_INFO, "Tuning: n %d",(int)num);
-			}
-		}*/
-		
-      /*if(fla1==0 && _target_bearing_cd<=18000)
-      	{  fla2=0; 
-      	  num=num+1;
-		 fla1=1;
-      	}
-	 
-      	if(fla2==0 && (_target_bearing_cd>18000 && _target_bearing_cd<=36000))
-      	{  fla1=0;
-      	  num=num+1;
-		  fla2=1;
-      	}*/
-	  
-      //maxradius=maxradius*pow(1.1, num);
-	
-	/*for (g = 0; g < num; ++g)
-		{
-		maxradius=maxradius*1.1;
-		}*/
-		
-
 
     // velocity of aircraft in NED coordinate system
     Vector3f velav;
@@ -631,26 +560,6 @@ void AP_L1_Control::update_loiter_ellipse(const struct Location &center_loc, con
     // projections of the aircraft's position onto e1 and e2
     const float posal1 = posalv * e1;
     const float posal2 = posalv * e2;
-	
-//阿基米德螺线
-	const float ra = sqrt(sq(posal1) + sq(1/cos_theta * posal2));
-	/*if (ra<0)
-		{
-        maxradius= maxradius_cm;
-	}
-	else
-		{
-		maxradius= ra*100+_target_bearing_cd*M_PI/180;
-	}*/
-//sin正选曲线
-	if (ra<0)
-		{
-        maxradius= maxradius_cm;
-	}
-	else
-		{
-		maxradius= ra*100 + ra * sin(2.0f*_target_bearing_cd*M_PI/360);
-	}
 
 	/*AP::logger().Write("Ehig", "TimeUS,x,y,po1,po2", "Qffff",
                                                AP_HAL::micros64(),
@@ -680,7 +589,7 @@ void AP_L1_Control::update_loiter_ellipse(const struct Location &center_loc, con
     if (!is_zero(cos_theta)){
       // non-degenerate ellipse
       // distance of the aircraft from the center of the ellipse in meter
-      //const float ra = sqrt(sq(posal1) + sq(1/cos_theta * posal2));
+      const float ra = sqrt(sq(posal1) + sq(1/cos_theta * posal2));
 	  //gcs().send_text(MAV_SEVERITY_INFO, "Tuning: Nu,ra %.2f %.2f",degrees(Nu),ra);
 //      hal.console->print("ra: ");
 //      hal.console->print(ra);
@@ -690,7 +599,7 @@ void AP_L1_Control::update_loiter_ellipse(const struct Location &center_loc, con
 //           hal.console->println(S1ctoalv.y);
 //           hal.console->println(e1.x);
 //           hal.console->println(e1.y);
-       const float rho = ra - maxradius/100.0f;
+       const float rho = ra - maxradius_cm/100.0f;
        // trigononometric functions of curve parameter phia at the aircraft's position
        const float cos_phia = posal1/ra;
        const float sin_phia = orientation * posal2/(ra * cos_theta);
@@ -737,7 +646,7 @@ void AP_L1_Control::update_loiter_ellipse(const struct Location &center_loc, con
        // keep crosstrack error for reporting
        _crosstrack_error = xtrackErrCirc;
 	   
-	   //gcs().send_text(MAV_SEVERITY_INFO, "Tuning: rho,dae %.2f %.2f",(float)rho,(float)dae);
+	   gcs().send_text(MAV_SEVERITY_INFO, "Tuning: rho,dae %.2f %.2f",(float)rho,(float)dae);
 	   //gcs().send_text(MAV_SEVERITY_INFO, "Tuning: pia,dpi %.2f %.2f",(float)degrees(acosf(cos_phia)),(float)dphi);
 
 	   AP::logger().Write("Elps", "TimeUS,ra,phia,phi,rhor,daer", "Qfffff",
@@ -781,7 +690,7 @@ void AP_L1_Control::update_loiter_ellipse(const struct Location &center_loc, con
        // Perform switchover between 'capture' and 'circle' modes at the
        // point where the commands cross over to achieve a seamless transfer
        // Only fly 'capture' mode if outside the circle
-       if ((xtrackErrCirc > maxradius * (1-minmaxratio)/100.0f && orientation * latAccDemCap < orientation * latAccDemCirc)){ //|| posalv.length()>= maxradius_cm/100.0f) {
+       if ((xtrackErrCirc > maxradius_cm * (1-minmaxratio)/100.0f && orientation * latAccDemCap < orientation * latAccDemCirc)){ //|| posalv.length()>= maxradius_cm/100.0f) {
            _latAccDem = latAccDemCap;
            _WPcircle = false;
            _bearing_error = Nu; // angle between demanded and achieved velocity vector, +ve to left of track
@@ -801,12 +710,12 @@ void AP_L1_Control::update_loiter_ellipse(const struct Location &center_loc, con
         hal.console->println("degenerate ellipse: ");
         // if cos_theta == 0, the ellipse is degenerate; its lateral projection is a straight line spanned by e1
 
-        Vector2f deltav = e1 * maxradius / 100.0f * 2.0 * orientation;
+        Vector2f deltav = e1 * maxradius_cm / 100.0f * 2.0 * orientation;
         struct Location start = center_loc;
         start.offset(-deltav.x, -deltav.y);
         struct Location end = center_loc;
         end.offset(deltav.x, deltav.y);
-		//gcs().send_text(MAV_SEVERITY_INFO, "Tuning: s,e %.2f %.2f",start,end);
+		gcs().send_text(MAV_SEVERITY_INFO, "Tuning: s,e %.2f %.2f",start,end);
 
 //        hal.console->print("deltav: ");
 //        hal.console->print(deltav.x);
@@ -829,19 +738,18 @@ void AP_L1_Control::update_loiter_3d(const struct Location &S2center, const Vect
 {
 
 // CALCULATE DERIVED PARAMETERS FROM ARGUMENT LIST OF THE FUNCTION
-    //int32_t  maxradius;
+
     const float cos_thetar = cosf(radians(theta_r));
     const float sin_thetar = sinf(radians(theta_r));
     // distance between the center of the sphere and the center of the circle
-    //const int32_t D = S2radius * cos_thetar;
-    const int32_t D = S2radius * cos_thetar - S2radius * cos_thetar + 1.0f;
+    const int32_t D = S2radius * cos_thetar;
     // radius of the circle
     const int32_t S1radius = S2radius * sin_thetar;
     // const Vector3f S2ctoS1cv = ercv * D/100.0f;
     // Location of the center of the circle
     struct Location S1center = S2center;
     S1center.offset(ercv.x * D/100.0f, ercv.y * D/100.0f);
-    S1center.alt = S1center.alt - ercv.z * D + maxradius*0.5f ;//cos(pi/3)=0.5
+    S1center.alt = S1center.alt - ercv.z * D;
      // trigonometric functions of the polar angle
      const float cos_theta = -ercv.z;
      const float sin_theta = sqrt(1.0f - sq(cos_theta));
@@ -866,102 +774,10 @@ void AP_L1_Control::update_loiter_3d(const struct Location &S2center, const Vect
       // this can be accomplished by a 90 degree rotation: e1 -> e2, e2 -> -e1 which preserves the orientation
       const Vector2f e1(-sin_psi,cos_psi); //unit vector pointing along the major principal axis; directed towards east for psi = 0
       const Vector2f e2(-e1.y,e1.x);//unit vector pointing along the minor principal axis; directed towards south for psi = 0
-
-	  // GET CURRENT POSITON AND VELOCITY
-		   // current location of the aircraft
-		   struct Location _current_loc;
-	  
-		   // get current position in NED coordinate system
-		  if (_ahrs.get_position(_current_loc) == false) {
-			  // if no GPS loc available, maintain last nav/target_bearing
-			  _data_is_stale = true;
-			  return;
-		  }
-		  // store aircraft's position for external use
-		  aircraft_loc = _current_loc;
-		  // aircraft's position vector (direction of ideal (straight) tether) from the center of the sphere
-		  Vector3f S2ctoav(S2center.location_3d_diff_NED(_current_loc));
-	  //	hal.console->print("S2ctoav: ");
-	  //	hal.console->print(S2ctoav.x);
-	  //	hal.console->print(", ");
-	  //	hal.console->print(S2ctoav.y);
-	  //	hal.console->print(", ");
-	  //	hal.console->println(S2ctoav.z);
-	  
-	  
-		  // aircraft's position vector from the center of the circle
-		  Vector3f S1ctoav(S1center.location_3d_diff_NED(_current_loc));
-		  // lateral projection of the aircraft's relative position vector
-		  Vector2f S1ctoalv(S1ctoav.x, S1ctoav.y);
-		  // update _target_bearing_cd
-		  _target_bearing_cd = _current_loc.get_bearing_to(S1center);
-	  
-		  // track velocity in NED coordinate system
-		  Vector3f velav;
-		  // only use if ahrs.have_inertial_nav() is true
-		  if (_ahrs.get_velocity_NED(velav)) {
-		  }
-		  else {Vector2f(velav.x, velav.y) =_ahrs.groundspeed_vector();
-				/* if (gps.status() >= AP_GPS::GPS_OK_FIX_3D && gps.have_vertical_velocity()) {
-						velav = gps.velocity().z;
-					} else {
-						velav = -barometer.get_climb_rate();
-					}; */
-				velav.z = 0;
-		  }
-		  // store aircraft velocity for external use
-		  aircraft_vel = velav;
-		  // lateral projection of the aircraft's velocity vector
-		  Vector2f velalv(velav.x,velav.y);
-		  // lateral velocity; protect against becoming zero
-		  float velal = MAX(velalv.length(), 1.0f);
-	  
-	  
-		  // unit tangent vector at point on a circle which is closest to the aircraft; lies in the plane containing the circle
-		   Vector3f etv = (S1ctoav % ercv) * orientation;
-		   etv = etv.normalized();
-		   // lateral projection of the unit tangent vector
-		   Vector2f etlv(etv.x, etv.y);
-		   etlv = etlv.normalized();
-	  
-		   // outer unit normal (radial) vector at point on circle that is closest to the aircraft
-		   Vector3f env = (ercv % etv) * orientation;
-		   env = env.normalized(); // renormalize in order to compensate for numerical inaccuracies
-		   // lateral renormalized projection of the unit normal vector; this is the radial vector of the point of the ellipse (the lateral projection of the circle) but NOT its normal vector;
-		   Vector2f erlv(env.x, env.y);
-		   if (erlv.length() > 0.1f) {
-			   erlv = erlv.normalized();
-		   } else {
-			   if (velalv.length() < 0.1f) {
-				   erlv = Vector2f(cosf(_ahrs.yaw), sinf(_ahrs.yaw));
-			   } else {
-				   erlv = velalv.normalized();
-			   }
-		   }
-
-
-	 // projections of the aircraft's position onto e1 and e2
-      const float posal1 = S1ctoalv * e1;
-      const float posal2 = S1ctoalv * e2;
-
-	  // distance of the aircraft from the center of the ellipse in meter
-	  const float ra = sqrt(sq(posal1) + sq(1/cos_theta * posal2));
-     //添加阿基米德螺线
-     
-	 if (ra<0)
-		 {
-		 maxradius = S1radius;
-	 }
-	 else
-		 {
-		 maxradius = ra*100.0f-_target_bearing_cd*M_PI/180;
-		// maxradius= ra*100+exp(_target_bearing_cd*M_PI/180*0.15f);
-	 }
-	  
       // minimal height for flying unconstrained outside the sphere
       int32_t heightmin_cm = 2000;
       // radius (half distance) between the two points of the segment lying above the minimal height
-      int32_t segradius_cm = sqrt(sq(maxradius)-sq(heightmin_cm));
+      int32_t segradius_cm = sqrt(sq(S1radius)-sq(heightmin_cm));
       //int32_t segradius_cm = sqrt(sq(S1radius)+sq(heightmin_cm));
       // vector is pointing in the direction of motion from start_loc to end_loc on the upper hemicircle (for inclination theta >0) given by orientation
       Vector2f maxv = - e1 * segradius_cm / 100.0f * orientation;
@@ -989,12 +805,83 @@ void AP_L1_Control::update_loiter_3d(const struct Location &S2center, const Vect
 //      hal.console->print(", ");
 //      hal.console->println(end_loc.alt);
 
+// GET CURRENT POSITON AND VELOCITY
+     // current location of the aircraft
+     struct Location _current_loc;
+
+     // get current position in NED coordinate system
+    if (_ahrs.get_position(_current_loc) == false) {
+        // if no GPS loc available, maintain last nav/target_bearing
+        _data_is_stale = true;
+        return;
+    }
+    // store aircraft's position for external use
+    aircraft_loc = _current_loc;
+    // aircraft's position vector (direction of ideal (straight) tether) from the center of the sphere
+    Vector3f S2ctoav(S2center.location_3d_diff_NED(_current_loc));
+//    hal.console->print("S2ctoav: ");
+//    hal.console->print(S2ctoav.x);
+//    hal.console->print(", ");
+//    hal.console->print(S2ctoav.y);
+//    hal.console->print(", ");
+//    hal.console->println(S2ctoav.z);
+
+
+    // aircraft's position vector from the center of the circle
+    Vector3f S1ctoav(S1center.location_3d_diff_NED(_current_loc));
+    // lateral projection of the aircraft's relative position vector
+    Vector2f S1ctoalv(S1ctoav.x, S1ctoav.y);
+    // update _target_bearing_cd
+    _target_bearing_cd = _current_loc.get_bearing_to(S1center);
+
+    // track velocity in NED coordinate system
+    Vector3f velav;
+    // only use if ahrs.have_inertial_nav() is true
+    if (_ahrs.get_velocity_NED(velav)) {
+    }
+    else {Vector2f(velav.x, velav.y) =_ahrs.groundspeed_vector();
+          /* if (gps.status() >= AP_GPS::GPS_OK_FIX_3D && gps.have_vertical_velocity()) {
+                  velav = gps.velocity().z;
+              } else {
+                  velav = -barometer.get_climb_rate();
+              }; */
+          velav.z = 0;
+    }
+    // store aircraft velocity for external use
+    aircraft_vel = velav;
+    // lateral projection of the aircraft's velocity vector
+    Vector2f velalv(velav.x,velav.y);
+    // lateral velocity; protect against becoming zero
+    float velal = MAX(velalv.length(), 1.0f);
+
+
+    // unit tangent vector at point on a circle which is closest to the aircraft; lies in the plane containing the circle
+     Vector3f etv = (S1ctoav % ercv) * orientation;
+     etv = etv.normalized();
+     // lateral projection of the unit tangent vector
+     Vector2f etlv(etv.x, etv.y);
+     etlv = etlv.normalized();
+
+     // outer unit normal (radial) vector at point on circle that is closest to the aircraft
+     Vector3f env = (ercv % etv) * orientation;
+     env = env.normalized(); // renormalize in order to compensate for numerical inaccuracies
+     // lateral renormalized projection of the unit normal vector; this is the radial vector of the point of the ellipse (the lateral projection of the circle) but NOT its normal vector;
+     Vector2f erlv(env.x, env.y);
+     if (erlv.length() > 0.1f) {
+         erlv = erlv.normalized();
+     } else {
+         if (velalv.length() < 0.1f) {
+             erlv = Vector2f(cosf(_ahrs.yaw), sinf(_ahrs.yaw));
+         } else {
+             erlv = velalv.normalized();
+         }
+     }
 
 
     // Calculate guidance gains used by PD loop (used during circle tracking)
       const float omega = (6.2832f / _L1_period);
       const float Kx = omega * omega;
-      const float Kv = 2.0f * _L1_damping * omega;
+      const float Kv = 1.0f * _L1_damping * omega;
       // Calculate L1 gain required for specified damping (used during waypoint capture)
       const float K_L1 = 4.0f * _L1_damping * _L1_damping;
 
@@ -1003,8 +890,8 @@ void AP_L1_Control::update_loiter_3d(const struct Location &S2center, const Vect
 
 
       // projections of the aircraft's position onto e1 and e2
-      /*const float posal1 = S1ctoalv * e1;
-      const float posal2 = S1ctoalv * e2;*/
+      const float posal1 = S1ctoalv * e1;
+      const float posal2 = S1ctoalv * e2;
       // determine parametrization (ra,phia) of the aircraft's position from lateral components
       // posal1 = ra cos(phia)
       // posal2 = ra cos(theta)sin(phia);
@@ -1023,14 +910,14 @@ void AP_L1_Control::update_loiter_3d(const struct Location &S2center, const Vect
       if (!is_zero(cos_theta)){
           // non-degenerate ellipse
           // distance of the aircraft from the center of the ellipse in meter
-          //const float ra = sqrt(sq(posal1) + sq(1/cos_theta * posal2));
+          const float ra = sqrt(sq(posal1) + sq(1/cos_theta * posal2));
 //           hal.console->println("cos_theta: ");
 //           hal.console->println(cos_theta);
 //           hal.console->println(S1ctoalv.x);
 //           hal.console->println(S1ctoalv.y);
 //           hal.console->println(e1.x);
 //           hal.console->println(e1.y);
-          const float rho = ra - maxradius/100.0f;
+          const float rho = ra - S1radius/100.0f;
           // trigonometric functions of curve parameter phia at the aircraft's position
           const float cos_phia = posal1/ra;
           const float sin_phia = orientation * posal2/(ra * cos_theta);
@@ -1087,13 +974,7 @@ void AP_L1_Control::update_loiter_3d(const struct Location &S2center, const Vect
           float xtrackErrCirc = dae;
           // keep crosstrack error for reporting
           _crosstrack_error = xtrackErrCirc;
-		  //gcs().send_text(MAV_SEVERITY_INFO, "Tuning: err,u1 %.2f %.2f",(float)_crosstrack_error,(float)u1);
-		  AP::logger().Write("L1", "TimeUS,Err,po1,po2", "Qfff",
-                                               AP_HAL::micros64(),
-                                               (double)_crosstrack_error,
-                                               (double)posal1,
-                                               (double)posal2
-                                               );
+		  gcs().send_text(MAV_SEVERITY_INFO, "Tuning: err %.2f",(float)_crosstrack_error);
 
           // velocities and accelerations for circulating around the center
 
@@ -1136,9 +1017,8 @@ void AP_L1_Control::update_loiter_3d(const struct Location &S2center, const Vect
               _nav_bearing = 0;//atan2f(-erlv.y , -erlv.x); // bearing (radians) from AC to L1 point
               // desired target: location of point closest to the inclined circle
               desired_loc = S1center;
-              desired_loc.offset(env.x * maxradius / 100.0f, env.y * maxradius / 100.0f);
-              //desired_loc.alt = S1center.alt - env.z * maxradius;
-			  desired_loc.alt = S1center.alt - env.z * maxradius;
+              desired_loc.offset(env.x * S1radius / 100.0f, env.y * S1radius / 100.0f);
+              desired_loc.alt = S1center.alt - env.z * S1radius;
               //hal.console->print("desired_loc.alt: ");
               //hal.console->println(desired_loc.alt);
           } else {
@@ -1150,9 +1030,9 @@ void AP_L1_Control::update_loiter_3d(const struct Location &S2center, const Vect
               _nav_bearing = atan2f(-erlv.y , -erlv.x); // bearing (radians)from AC to L1 point
               // desired target: point closest to the inclined circle
               desired_loc = S1center;
-              desired_loc.offset(env.x * maxradius / 100.0f, env.y * maxradius / 100.0f);
-              //desired_loc.alt = S1center.alt - env.z * maxradius;
-			  desired_loc.alt = S1center.alt - env.z * maxradius;
+              desired_loc.offset(env.x * S1radius / 100.0f, env.y * S1radius / 100.0f);
+              desired_loc.alt = S1center.alt - env.z * S1radius;
+
 
               //hal.console->println(desired_loc.alt - S2center.alt);
               //hal.console->print(" ");
@@ -1805,4 +1685,3 @@ void AP_L1_Control::update_level_flight(void)
 
     _data_is_stale = false; // status are correctly updated with current waypoint data
 }
-

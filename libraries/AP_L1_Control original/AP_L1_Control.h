@@ -19,51 +19,20 @@
 #include <AP_Navigation/AP_Navigation.h>
 #include <AP_SpdHgtControl/AP_SpdHgtControl.h>
 #include <AP_Common/Location.h>
-#include "POMDSoarAlgorithm.h"
-//#include "WindExtendedKalmanFilter.h"
-class POMDSoarAlgorithm;
-
-
-
-
 
 class AP_L1_Control : public AP_Navigation {
-	friend class POMDSoarAlgorithm;
-	//POMDSoarAlgorithm _pomdsoar;
-
-     //POMDSoarAlgorithm _pomdsoar;
-//ExtendedKalmanFilter _ekf{};
-//WindExtendedKalmanFilter _wind_ekf{};
-
-
 public:
     AP_L1_Control(AP_AHRS &ahrs, const AP_SpdHgtControl *spdHgtControl)
         : _ahrs(ahrs)
         , _spdHgtControl(spdHgtControl)
-        ,_pomdsoar(this,ahrs)
     {
         AP_Param::setup_object_defaults(this, var_info);
     }
-		
-    //POMDSoarAlgorithm _pomdsoar(rollController, scaling_speed)
+
     /* Do not allow copies */
     AP_L1_Control(const AP_L1_Control &other) = delete;
     AP_L1_Control &operator=(const AP_L1_Control&) = delete;
-	
-//修改
-/*
-	// store time of last update
-    uint64_t _prev_update_time;
 
-    // store time of last update of the vario
-    uint64_t _prev_vario_update_time;
-	
-	// store aircraft location at last update
-	struct Location _prev_update_location;
-	struct Location _prev_vario_update_location;
-	struct Location _thermal_start_location;
-	uint64_t _thermal_start_time_us;
-*/
     /* see AP_Navigation.h for the definitions and units of these
      * functions */
     int32_t nav_roll_cd(void) const override;
@@ -112,17 +81,7 @@ public:
         _reverse = reverse;
     }
 
-	float Pab;
-	float Perr;
-	float Pv;
-	float Pwa;
-	float Proll;
-	POMDSoarAlgorithm _pomdsoar;
-
 private:
-
-    //POMDSoarAlgorithm *_pomdsoar;
-    
     // reference to the AHRS object
     AP_AHRS &_ahrs;
 

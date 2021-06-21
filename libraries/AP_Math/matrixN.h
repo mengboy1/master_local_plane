@@ -42,6 +42,16 @@ public:
     
     // Matrix symmetry routine
     void force_symmetry(void);
+	
+	T (&getarray())[N][N]{ return v;  }
+
+	inline const T & operator()(uint8_t i, uint8_t j) const {
+        return v[i][j];
+    }
+
+    inline T & operator()(uint8_t i, uint8_t j) {
+        return v[i][j];
+    }
 
 private:
     T v[N][N];

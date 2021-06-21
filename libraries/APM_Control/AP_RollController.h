@@ -32,6 +32,8 @@ public:
     const       AP_Logger::PID_Info& get_pid_info(void) const { return _pid_info; }
 
 	static const struct AP_Param::GroupInfo var_info[];
+	
+	const AP_AutoTune::ATGains &get_gains(void) { return gains; }
 
 
     // tuning accessors

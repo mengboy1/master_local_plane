@@ -11,7 +11,7 @@ Extended Kalman Filter class by Sam Tabor, 2013.
 
 #define N 4
 
-class ExtendedKalmanFilter {
+class ExtendedKalmanFilter{
 public:
     ExtendedKalmanFilter(void) {}
     
