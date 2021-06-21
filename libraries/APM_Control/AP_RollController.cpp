@@ -19,6 +19,8 @@
 
 #include <AP_HAL/AP_HAL.h>
 #include "AP_RollController.h"
+#include <GCS_MAVLink/GCS.h>
+
 
 extern const AP_HAL::HAL& hal;
 
@@ -102,6 +104,7 @@ int32_t AP_RollController::_get_rate_out(float desired_rate, float scaler, bool 
     // No conversion is required for K_D
 	float ki_rate = gains.I * gains.tau;
     float eas2tas = _ahrs.get_EAS2TAS();
+	//gains.P = 2.8f;
 	float kp_ff = MAX((gains.P - gains.I * gains.tau) * gains.tau  - gains.D , 0) / eas2tas;
     float k_ff = gains.FF / eas2tas;
 	float delta_time    = (float)dt * 0.001f;
@@ -156,6 +159,8 @@ int32_t AP_RollController::_get_rate_out(float desired_rate, float scaler, bool 
     _pid_info.actual = achieved_rate;
 
 	_last_out = _pid_info.FF + _pid_info.P + _pid_info.D;
+
+	//gcs().send_text(MAV_SEVERITY_INFO, "Tuning: P,kp_ff,I %f,%f,%f",double(gains.P),double(kp_ff),double(gains.I));
 
     if (autotune.running && aspeed > aparm.airspeed_min) {
         // let autotune have a go at the values 

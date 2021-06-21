@@ -1,5 +1,7 @@
 #include "AC_AttitudeControl.h"
 #include <AP_HAL/AP_HAL.h>
+#include <GCS_MAVLink/GCS.h>
+
 
 extern const AP_HAL::HAL& hal;
 
@@ -909,6 +911,8 @@ Vector3f AC_AttitudeControl::update_ang_vel_target_from_att_error(const Vector3f
     }
     // todo: Add Angular Velocity Limit
 
+	//gcs().send_text(MAV_SEVERITY_INFO, "Tuning: P %f",_p_angle_roll.kP());
+
     // Compute the pitch angular velocity demand from the pitch angle error
     if (_use_sqrt_controller) {
         rate_target_ang_vel.y = sqrt_controller(attitude_error_rot_vec_rad.y, _p_angle_pitch.kP(), constrain_float(get_accel_pitch_max_radss() / 2.0f, AC_ATTITUDE_ACCEL_RP_CONTROLLER_MIN_RADSS, AC_ATTITUDE_ACCEL_RP_CONTROLLER_MAX_RADSS), _dt);
@@ -945,6 +949,8 @@ float AC_AttitudeControl::rate_target_to_motor_roll(float rate_actual_rads, floa
 
     // Compute output in range -1 ~ +1
     float output = get_rate_roll_pid().get_p() + integrator + get_rate_roll_pid().get_d() + get_rate_roll_pid().get_ff(rate_target_rads);
+
+	gcs().send_text(MAV_SEVERITY_INFO, "Tuning: P,I,D %f %f %f",get_rate_roll_pid().get_p(),integrator,get_rate_roll_pid().get_d());
 
     // Constrain output
     return output;

@@ -81,11 +81,6 @@ public:
         _reverse = reverse;
     }
 
-	float v1;
-	float v2;
-	float v3;
-	float v4;
-
 private:
     // reference to the AHRS object
     AP_AHRS &_ahrs;
